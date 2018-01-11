@@ -1,0 +1,647 @@
+			     An Xft Tutorial
+			      Keith Packard
+			XFree86 Core Team, SuSE Inc.
+
+Introduction
+
+This is a quick tutorial about the basics of Xft; a comparison to core X
+routines is given along with some brief examples
+
+1. Opening Fonts
+
+Xft uses a more sophisticated font matching scheme than the core protocol,
+patterns are built out of a list of elements, each with a name and a list of
+values.  Once built, the pattern is matched against all available fonts and
+the one most closely matching is selected. This contrasts to the core
+mechanism which uses simple shell-style globbing where the first matching
+font is selected.
+
+1.1 Xft Font Names
+
+Xft font names can be represented in string form for storage in
+configuration files or internally within applications, presenting these
+names to the user is not quite as bad as using XLFD, but it's still less
+polite than using a reasonable UI.  The format for Xft font names is:
+
+	<family>-<size>:<name>=<value>...
+
+An arbitrary set of additional elements can be appended to the font name,
+the complete list of possible properties is:
+
+	CPP constant	    Name		Type
+	----------------------------------------------
+	XFT_FAMILY	    family		String
+	XFT_STYLE	    style		String
+	XFT_SLANT	    slant		Int
+	XFT_WEIGHT	    weight		Int
+	XFT_SIZE	    size		Double
+	XFT_PIXEL_SIZE	    pixelsize		Double
+	XFT_ENCODING	    encoding		String
+	XFT_SPACING	    spacing		Int
+	XFT_FOUNDRY	    foundry		String
+	XFT_CORE	    core		Bool
+	XFT_ANTIALIAS	    antialias		Bool
+	XFT_XLFD	    xlfd		String
+	XFT_FILE	    file		String
+	XFT_INDEX	    index		Int
+	XFT_RASTERIZER	    rasterizer		String
+	XFT_OUTLINE	    outline		Bool
+	XFT_SCALABLE	    scalable		Bool
+	XFT_RGBA	    rgba		Int
+
+	(Defaults from resources)
+	
+	XFT_SCALE	    scale		Double
+	XFT_RENDER	    render		Bool
+	XFT_MINSPACE	    minspace		Bool
+
+	(Specific to FreeType rasterizer)
+	
+	XFT_CHAR_WIDTH	    charwidth		Int
+	XFT_CHAR_HEIGHT	    charheight		Int
+	XFT_MATRIX	    matrix    		XftMatrix
+
+
+As family and size are both nearly always needed to access a font, they're
+given a privileged place, but really they're no different than the
+remaining values.  For elements that use an enumerated list of possible
+values, the values are given names which can be used in place of an integer,
+or can actually replace the whole name=value part.  They're all unique, 
+so this actually works.  Here's a list of all of the enumerated values and
+the associated name:
+
+	Value		Element		CPP value constant
+	--------------------------------------------------
+	light		weight   	XFT_WEIGHT_LIGHT
+	medium		weight   	XFT_WEIGHT_MEDIUM
+	demibold	weight   	XFT_WEIGHT_DEMIBOLD
+	bold		weight   	XFT_WEIGHT_BOLD
+	black		weight   	XFT_WEIGHT_BLACK
+
+	roman		slant    	XFT_SLANT_ROMAN
+	italic		slant    	XFT_SLANT_ITALIC
+	oblique		slant    	XFT_SLANT_OBLIQUE
+
+	proportional	spacing  	XFT_PROPORTIONAL
+	mono		spacing  	XFT_MONO
+	charcell	spacing  	XFT_CHARCELL
+
+	rgb		rgba	    	XFT_RGBA_RGB
+	bgr		rgba	    	XFT_RGBA_BGR
+	vrgb		rgba	    	XFT_RGBA_VRGB
+	vbgr		rgba	    	XFT_RGBA_VBGR
+
+Some Example Xft Font Patterns:
+
+	times-12
+
+12 point times
+
+	times,charter-12:bold
+
+12 point, preferring 'times', but accepting 'charter', bold.
+
+	times-12:bold:slant=italic,oblique
+
+12 point times bold, either italic or oblique
+
+	times-12:rgba=vbgr
+
+12 point times, optimized for display on an LCD screen with sub-pixel
+elements arranged vertically with blue on the top and red on the bottom.
+
+	times:pixelsize=100
+
+100 pixel times -- pixel size overrides any point size.
+
+1.2. Programatic Font Names
+
+Internally, font patterns are stored in an XftPattern structure.  This
+contains an array of pattern elements and can be created, edited and used in
+several different ways.  
+
+1.2.1 Xft string name functions
+
+	XftPattern *
+	XftNameParse (const char *name);
+
+This takes a name in the above form and parses it into an Xft pattern.
+	
+The inverse function:
+
+	Bool
+	XftNameUnparse (XftPattern *pat, char *dest, int len);
+
+takes a pattern and generates the resulting name, returning False if there's
+not enough space in dest.
+
+1.2.2 Xft pattern functions
+
+At a lower level, Xft patterns can be constructed directly from lists of
+elements
+
+	XftPattern *
+	XftPatternCreate (void);
+
+This creates a pattern with no elements.
+
+	XftPattern *
+	XftPatternDuplicate (XftPattern *p);
+
+Duplicates a pattern returning the copy.
+
+	void
+	XftPatternDestroy (XftPattern *p);
+
+Destroys a pattern.
+
+	XftPatternElt *
+	XftPatternFind (XftPattern *p, const char *object, Bool insert);
+
+Locates a pattern element with the given name.  If 'insert' is True, it will
+create an empty pattern element if none exists.
+
+	Bool
+	XftPatternAdd (XftPattern *p, const char *object, XftValue value, Bool append);
+    
+Add a value to the specified pattern element.  If 'append' is true, the value
+is added after existing values, otherwise it is added before them.
+
+	XftResult
+	XftPatternGet (XftPattern *p, const char *object, int id, XftValue *v);
+    
+Return a value from the specified element -- multiple values can be indexed
+with 'id' starting at zero.
+
+	Bool
+	XftPatternDel (XftPattern *p, const char *object);
+
+Delete the named pattern element.
+
+There are short forms of the Add and Get function for each type:
+
+	Bool
+	XftPatternAddInteger (XftPattern *p, const char *object, int i);
+
+	Bool
+	XftPatternAddDouble (XftPattern *p, const char *object, double d);
+
+	Bool
+	XftPatternAddString (XftPattern *p, const char *object, const char *s);
+
+	Bool
+	XftPatternAddMatrix (XftPattern *p, const char *object, const XftMatrix *s);
+
+	Bool
+	XftPatternAddBool (XftPattern *p, const char *object, Bool b);
+
+	XftResult
+	XftPatternGetInteger (XftPattern *p, const char *object, int n, int *i);
+
+	XftResult
+	XftPatternGetDouble (XftPattern *p, const char *object, int n, double *d);
+
+	XftResult
+	XftPatternGetString (XftPattern *p, const char *object, int n, char **s);
+
+	XftResult
+	XftPatternGetMatrix (XftPattern *p, const char *object, int n, XftMatrix **s);
+
+	XftResult
+	XftPatternGetBool (XftPattern *p, const char *object, int n, Bool *b);
+
+There are also two functions to build names more quickly using a list
+of name/value pairs:
+
+	XftPattern *
+	XftPatternVaBuild (XftPattern *orig, va_list va);
+    
+	XftPattern *
+	XftPatternBuild (XftPattern *orig, ...);
+
+The list of arguments is a set of triplets:
+
+	name, type, value
+
+where 'name' is the element name, 'type' is one of:
+
+	XftTypeVoid
+	XftTypeInteger
+	XftTypeDouble
+	XftTypeString
+	XftTypeBool
+	XftTypeMatrix
+
+and value is the value to set.  The list is terminated with a name of 0.
+The type is included in the API to allow multiple representations for
+numeric values and also to provide some visual typechecking otherwise
+unavailable in a varargs function.
+
+1.3 Matching Fonts
+
+A constructed pattern is passed to 
+
+	XftPattern *
+	XftFontMatch (Display *dpy, int screen, 
+		      XftPattern *pattern, XftResult *result);
+
+This returns a pattern which represents the font most closely matching the
+requested pattern.  Included in this pattern are the matched font name, the
+file the font comes from and a bunch of other stuff.  This pattern can
+then be handed off to:
+
+	XftFont *
+	XftFontOpenPattern (Display *dpy, XftPattern *pattern);
+
+which opens the specified font and returns the font object.
+
+1.3.1 XftConfig pattern editing
+
+To allow for family aliasing and a myriad of other configuration
+possibilities, Xft pattern used to match fonts are first edited using the
+instructions found in the XftConfig file.  This file matches incoming
+patterns and makes substitutions within them before the pattern is compared
+with the available fonts.  The operation of this file might eventually be
+described in another document.
+
+1.3.2 Convenience functions
+
+As the sequence of primitive calls to open a font can be tiresome to type,
+there are convenience functions as well:
+
+	XftFont *
+	XftFontOpenPattern (Display *dpy, XftPattern *pattern);
+
+Matches and opens a font
+
+	XftFont *
+	XftFontOpen (Display *dpy, int screen, ...);
+
+Takes arguments like XftPatternBuild does and opens a font
+
+	XftFont *
+	XftFontOpenName (Display *dpy, int screen, const char *name);
+
+Parses an Xft-syle font name and opens a font
+
+	XftFont *
+	XftFontOpenXlfd (Display *dpy, int screen, const char *xlfd);
+
+Parses an XLFD name and opens a font.  Note that this will not return the
+same font that XOpenFont would have; the XLFD name is not passed to the X
+server, rather it is parsed into an Xft pattern and then matched locally.
+Usually this works better than core X.
+
+2. Listing fonts
+
+While the matching functions provide sophisticated heuristics which
+generally locate a suitable font, it's still nice to present a list of
+available font families and styles to the user.  Xft separates the notion of
+matching fonts for listing from the list of which values are desired by the
+application.  
+
+Xft takes a pattern and a list of element names and returns an array of
+patterns formed by extracting the desired pattern elements from available
+fonts which match the specified pattern.  Further, Xft returns only those
+patterns which are unique in the requested elements.  This permits
+applications to list 'available families' by matching all fonts but only
+returning the family element of each font.
+
+2.1 The XftObjectSet structure
+
+The list of desired elements is held in an XftObjectSet structure, it can
+be built using the varargs functions
+
+	XftObjectSet *
+	XftObjectSetVaBuild (const char *first, va_list va);
+	
+	XftObjectSet *
+	XftObjectSetBuild (const char *first, ...);
+
+The arguments are just a list of element names terminated with null char *
+pointer:
+
+	XftObjectSetBuild (XFT_FAMILY, XFT_STYLE, (char *) 0);
+
+Alternatively, XftObjectSets may be built incrementally using:
+
+	XftObjectSet *
+	XftObjectSetCreate (void);
+
+and
+
+	Bool
+	XftObjectSetAdd (XftObjectSet *os, const char *object);
+
+2.3 Generating the list of matching fonts
+
+With a pattern to match against, and a list of desired element names, the
+set of matching fonts is generated with:
+
+	XftFontSet *
+	XftListFontsPatternObjects (Display	    *dpy,
+				    int		    screen,
+				    XftPattern	    *pattern,
+				    XftObjectSet    *os);
+
+This returns an XftFontSet which holds the array of patterns constructed by
+extracting the desired pattern elements from all of the available fonts
+which match the specified pattern.
+
+As a convenience, this whole mess can be done in one call:
+
+	XftFontSet *
+	XftListFonts (Display	*dpy,
+		      int	screen,
+		      ...);
+
+This takes first an XftPattern description as used by XftPatternBuild
+followed by a null char pointer and then a list of element names as used by
+XftObjectSetBuild followed by another null char pointer:
+
+	XftListFonts (dpy, screen,
+		      XFT_FAMILY, XftTypeString, "times",
+		      0,
+		      XFT_STYLE,
+		      XFT_WEIGHT,
+		      0);
+
+This returns patterns holding all of the unique style and weight
+combinations for the 'times' family of fonts.
+
+3. Metrics functions
+
+Once a font has been opened, metrics for sequences of characters can be
+computed.  Xft metrics use the X Rendering extension data structure which is
+a bit different than either core X or other metrics data structures:
+
+The metrics for each glyph are described by an XGlyphInfo structure:
+
+	typedef struct _XGlyphInfo {
+	    unsigned short  width;
+	    unsigned short  height;
+	    short	    x;
+	    short	    y;
+	    short	    xOff;
+	    short	    yOff;
+	} XGlyphInfo;
+
+Width/height are the size of the glyph image in pixels.  x,y is the offset
+from the origin of the glyph image to the rendering origin.  xOff, yOff is
+the normal spacing to the next glyph.  Note that x,y is backwards, the
+location of the bitmap is computed by subtracting them from the rendering
+origin.  So, to compute the rectangle covered by a single glyph rendered at
+x,y:
+
+	top = y - glyphInfo.y;
+	left = x - glyphInfo.x;
+	bottom = top + glyphInfo.height;
+	right = left + glyphInfo.width;
+
+And to compute the normal location for the next glyph:
+
+	x = x + glyphInfo.xOff;
+	y = y + glyphInfo.yOff;
+
+The "width" of a glyph is thus found in the xOff member of this structure.
+
+Xft has four functions that return the metrics of text, depending on their
+encoding:
+
+	void
+	XftTextExtents8 (Display	*dpy,
+			 XftFont	*font,
+			 XftChar8	*string, 
+			 int		len,
+			 XGlyphInfo	*extents);
+	
+	void
+	XftTextExtents16 (Display	    *dpy,
+			  XftFont	    *font,
+			  XftChar16	    *string, 
+			  int		    len,
+			  XGlyphInfo	    *extents);
+	
+	void
+	XftTextExtents32 (Display	*dpy,
+			  XftFont	*font,
+			  XftChar32	*string, 
+			  int		len,
+			  XGlyphInfo	*extents);
+	    
+	void
+	XftTextExtentsUtf8 (Display	*dpy,
+			    XftFont	*font,
+			    XftChar8	*string, 
+			    int		len,
+			    XGlyphInfo	*extents);
+	
+
+Note that the 'Utf8' function doesn't actually recode the glyphs using the
+encoding of the font, rather it simply uses the Utf8 encoding to express 32
+bit values as a variable-length sequence of bytes.
+
+4. Drawing functions
+
+Xft requires additional state related to each drawable surface used as a
+target, so it wraps X drawables in another data structure called an
+XftDraw.
+
+	XftDraw *
+	XftDrawCreate (Display   *dpy,
+		       Drawable  drawable,
+		       Visual    *visual,
+		       Colormap  colormap);
+
+Creates an XftDraw for the associated drawable using the pixel format found
+in 'visual' and colors from 'colormap'.  To create an XftDraw for a mask
+bitmap (i.e. a 1-bit alpha channel), use:
+
+	XftDraw *
+	XftDrawCreateBitmap (Display  *dpy,
+			     Pixmap   bitmap);
+
+When the application is finished with an XftDraw, destroy it with:
+
+	void
+	XftDrawDestroy (XftDraw	*draw);
+
+4.1 Modifying an XftDraw
+
+The target drawable for an XftDraw can be switched with
+
+	void
+	XftDrawChange (XftDraw	*draw,
+		       Drawable	drawable);
+
+This function assumes that the new drawable uses the same visual and
+colormap as the old.
+
+The clip list for an XftDraw is set with:
+
+	Bool
+	XftDrawSetClip (XftDraw	    *d,
+			Region	    r);
+
+Construct the region using regular Xlib functions.
+
+4.2 Color Allocation
+
+As Xft hides the difference between core X text and Render extension text,
+it requires both pixel values and ARGB values to draw with.  An XftColor
+structure holds both of these:
+
+	typedef struct {
+	    unsigned short   red;
+	    unsigned short   green;
+	    unsigned short   blue;
+	    unsigned short   alpha;
+	} XRenderColor;
+
+	typedef struct _XftColor {
+	    unsigned long   pixel;
+	    XRenderColor    color;
+	} XftColor;
+
+Two functions can be used to allocate these colors:
+
+	Bool
+	XftColorAllocName (Display  *dpy,
+			   Visual   *visual,
+			   Colormap cmap,
+			   char	    *name,
+			   XftColor *result)
+
+XftColorAllocName asks the X server to allocate a pixel and return the
+associated RGB values which are used to construct an XRenderColor; this
+requires a round trip (bad).
+	
+	XftColorAllocValue (Display	    *dpy,
+			    Visual	    *visual,
+			    Colormap	    cmap,
+			    XRenderColor    *color,
+			    XftColor	    *result)
+
+For TrueColor visuals, XftColorAllocValue computes the nearest supported
+ARGB value and the associated pixel value and stores them in the result.  No
+round trip is required.  For non-TrueColor visuals, XftColorAllocValue asks
+the X server to allocate the specified color and stores the resulting pixel
+and ARGB values into result.
+
+When the color is no longer in use, it can be freed with:
+
+void
+XftColorFree (Display	*dpy,
+	      Visual	*visual,
+	      Colormap	cmap,
+	      XftColor	*color);
+
+4.3 Text Rendering
+
+As with the extents functions above, Xft has four different text rendering
+functions differing only in the format for the string:
+
+	void
+	XftDrawString8 (XftDraw		*d,
+			XftColor	*color,
+			XftFont		*font,
+			int		x, 
+			int		y,
+			XftChar8	*string,
+			int		len);
+	
+	void
+	XftDrawString16 (XftDraw	*draw,
+			 XftColor	*color,
+			 XftFont	*font,
+			 int		x,
+			 int		y,
+			 XftChar16	*string,
+			 int		len);
+	
+	void
+	XftDrawString32 (XftDraw	*draw,
+			 XftColor	*color,
+			 XftFont	*font,
+			 int		x,
+			 int		y,
+			 XftChar32	*string,
+			 int		len);
+	
+	void
+	XftDrawStringUtf8 (XftDraw	*d,
+			   XftColor	*color,
+			   XftFont	*font,
+			   int		x, 
+			   int		y,
+			   XftChar8	*string,
+			   int		len);
+	
+4.4 Rectangle rendering
+
+As a convenience, Xft also contains a function to draw a rectangle; while
+this can usually be done with core X calls, the Xft variant allows for
+translucent colors:
+
+	void
+	XftDrawRect (XftDraw	    *d,
+		     XftColor	    *color,
+		     int	    x, 
+		     int	    y,
+		     unsigned int   width,
+		     unsigned int   height);
+
+5.0 Switching Core X rendering to Xft rendering
+
+Taking an existing X application and switching text rendering from core X to
+Xft is fairly easy as there are rough equivalents for most functions.
+
+5.1 Font Opening
+
+The quick fix is to use Xft XLFD font name handling:
+
+	font = XLoadQueryFont -> font = XftFontOpenXlfd
+
+This limits the pattern matching to fields supported in XLFD names, which is
+rather restrictive.  It's better to switch font naming the Xft names if
+possible:
+
+	font = XftFontOpenName
+
+5.2 Font Listing
+
+This is the hardest change, usually it involves ripping large chunks of XLFD
+parsing code out of applications and leaving that up to Xft.  A simple
+example really isn't possible in this case as the font listing of Xft is
+significantly different from core X.
+
+5.2 Text Metrics
+
+Note that the values within the metrics structures have significantly
+different interpretation; code using the metrics will need modification
+
+	XTextWidth 	-> XftTextExtents8 (...); width = extents.xOff;
+	XTextExtents 	-> XftTextExtents8
+
+5.3 Text Drawing
+
+Xft doesn't support "image text" at all; rather the application must
+explicitly fill the background rectangle before drawing the string.  With AA
+text, there's no other way to make it work.
+
+	XDrawString 		-> XftDrawString8
+	XDrawImageString	-> XftDrawRect + XftDrawString8
+
+Note that drawing the same string multiple times in the same place will
+generate the wrong result with AA text.  This can be especially hard to fix
+in applications that avoid setting clipping when redrawing parts of
+windows.  An easy fix here is to simply clear the entire window before
+redrawing it.  This does cause extensive flashing on the screen, the
+alternative is to use clipping and make sure that any areas within the clip
+region get cleared to the background before text is drawn on top.
+
+6. Conclusions
+
+Converting applications from core X text to Xft is tricky in places, but
+relatively straightforward in most ways.  Attention must be paid to text
+metric usages and erasing areas to background before drawing text.
